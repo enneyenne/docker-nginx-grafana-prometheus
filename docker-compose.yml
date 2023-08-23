@@ -1,0 +1,82 @@
+version: '3.11'
+
+services:
+
+  nginx1:
+    build: .
+    container_name: nginx1
+    volumes:
+      - './shared-nginx-configs:/etc/nginx:ro'    
+    ports:
+      - "8001:80"
+    networks:
+      - network-nginx1
+
+  nginx2:
+    image: nginx:1.25
+    container_name: nginx2
+    restart: always
+    volumes:
+      - './shared-nginx-configs:/etc/nginx:ro'
+    ports:
+      - "8002:80"
+    networks:
+      - network-nginx2
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:9.5.2
+    restart: unless-stopped
+    volumes:
+    - ./grafana/provisioning:/etc/grafana/provisioning
+    - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+     - GF_SECURITY_ADMIN_USER=admin
+     - GF_SECURITY_ADMIN_PASSWORD=admin
+     - GF_USERS_ALLOW_SIGN_UP=false
+     - GF_AUTH_DISABLE_LOGIN_FORM=false
+     - GF_AUTH_DISABLE_SIGNOUT_MENU=false
+     - GF_SECURITY_ALLOW_EMBEDDING=true
+     - GF_AUTH_ANONYMOUS_ENABLED=true
+     - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+     - GF_AUTH_BASIC_ENABLED=false
+     - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH:="/var/lib/grafana/dashboards/dashboard1.json"
+    networks:
+      - network-nginx1
+      - network-nginx2
+    ports:
+      - "3000:3000"
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v2.44.0
+    networks:
+      - network-nginx1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  nginx-prometheus-exporter:
+    container_name: nginx-prometheus-exporter
+    image: nginx/nginx-prometheus-exporter:0.11
+    command: 
+     - '-nginx.scrape-uri=http://nginx1:80/metrics'
+    ports:
+      - "9113:9113"
+    depends_on:
+      - prometheus
+    networks:
+      - network-nginx1
+
+volumes:
+  shared-nginx-configs:
+    driver: local
+
+networks:
+  network-nginx1:
+    driver: bridge
+  network-nginx2:
+    driver: bridge
